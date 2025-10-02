@@ -1,0 +1,6 @@
+id,category,amount,email,start_date,end_date,ratio
+1,A,-10.0,alpha_at_example.com,2024-01-06,2024-01-02,
+3,C,200.0,beta@example.com,2024-01-04,2024-01-03,0.50
+3,A,150.2,gamma@example.com,2024-01-02,2024-01-01,0.40
+4,B,180.1,delta@example.com,2024-01-05,2024-01-05,0.18
+5,A,220.7,epsilon@example.com,2024-01-06,2024-01-10,0.25

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "df-contracts"
+version = "0.1.0"
+description = "Lightweight DataFrame contracts for pandas"
+readme = "README.md"
+authors = [{name = "OpenAI", email = "opensource@openai.com"}]
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "pydantic>=2",
+    "typer",
+    "rich",
+    "orjson",
+    "tomli-w",
+    "tomli",
+    "python-dateutil",
+    "regex",
+]
+optional-dependencies = { polars = ["polars"] }
+
+[project.urls]
+Homepage = "https://example.com/df-contracts"
+
+[project.scripts]
+dfc = "df_contracts.cli:app"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+packages = ["df_contracts"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["df_contracts"]
