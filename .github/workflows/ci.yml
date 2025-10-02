@@ -21,12 +21,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[polars]
-          pip install pytest pytest-cov ruff black mypy
+          pip install pytest pytest-cov ruff black mypy pre-commit
       - name: Lint
         run: |
           ruff check .
           black --check .
       - name: Type check
         run: mypy
+      - name: Run pre-commit
+        run: pre-commit run --all-files
       - name: Test
         run: pytest --cov=df_contracts
+      - name: Generate validation artefacts
+        run: |
+          mkdir -p build
+          dfc init tests/data/sample.csv --no-show-suggestions > build/contract.json
+          dfc check tests/data/bad_sample.csv --contract build/contract.json --report build/report.json --html build/report.html --junit build/report.xml || true
+        continue-on-error: true
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dfc-reports-${{ matrix.os }}-${{ matrix.python-version }}
+          path: build/

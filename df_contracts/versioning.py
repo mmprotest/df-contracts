@@ -11,71 +11,68 @@ def _describe(message: str, *, column: str | None = None) -> str:
 
 
 def compare_contracts(old: Contract, new: Contract) -> dict[str, Any]:
-    breaking: List[str] = []
-    non_breaking: List[str] = []
-    changed_columns: Dict[str, dict[str, Any]] = {}
+    diff: dict[str, Any] = {
+        "columns_added": [],
+        "columns_removed": [],
+        "columns_renamed": [],
+        "dtype_changes": [],
+        "nullability_changes": [],
+        "enum_changes": [],
+        "rule_changes": [],
+        "breaking": [],
+        "non_breaking": [],
+    }
     old_cols = {col.name: col for col in old.columns}
     new_cols = {col.name: col for col in new.columns}
-    for name, old_col in old_cols.items():
-        if name not in new_cols:
-            breaking.append(_describe("column removed", column=name))
-            continue
+    for name in old_cols.keys() - new_cols.keys():
+        diff["columns_removed"].append(name)
+        diff["breaking"].append(_describe("column removed", column=name))
+    for name in new_cols.keys() - old_cols.keys():
+        diff["columns_added"].append(name)
+        diff["non_breaking"].append(_describe("column added", column=name))
+    for name in sorted(set(old_cols) & set(new_cols)):
+        old_col = old_cols[name]
         new_col = new_cols[name]
-        col_changes: dict[str, Any] = {}
         if normalize_dtype(old_col.dtype) != normalize_dtype(new_col.dtype):
-            col_changes["dtype"] = {"from": old_col.dtype, "to": new_col.dtype}
-            if _is_dtype_narrowing(old_col.dtype, new_col.dtype):
-                breaking.append(_describe("dtype narrowed", column=name))
-            else:
-                non_breaking.append(_describe("dtype widened", column=name))
-        old_nullable = old_col.nullable
-        new_nullable = new_col.nullable
-        if old_nullable != new_nullable:
-            col_changes["nullable"] = {"from": old_nullable, "to": new_nullable}
-            if _nullable_stricter(old_nullable, new_nullable):
-                breaking.append(_describe("nullability tightened", column=name))
-            else:
-                non_breaking.append(_describe("nullability relaxed", column=name))
-        if old_col.enum and new_col.enum:
-            old_enum = set(old_col.enum)
-            new_enum = set(new_col.enum)
+            change = "narrow" if _is_dtype_narrowing(old_col.dtype, new_col.dtype) else "widen"
+            diff["dtype_changes"].append({"column": name, "from": old_col.dtype, "to": new_col.dtype, "change": change})
+            bucket = diff["breaking"] if change == "narrow" else diff["non_breaking"]
+            bucket.append(_describe(f"dtype {change}ed", column=name))
+        if old_col.nullable != new_col.nullable:
+            kind = "tightened" if _nullable_stricter(old_col.nullable, new_col.nullable) else "relaxed"
+            diff["nullability_changes"].append({"column": name, "from": old_col.nullable, "to": new_col.nullable, "change": kind})
+            bucket = diff["breaking"] if kind == "tightened" else diff["non_breaking"]
+            bucket.append(_describe(f"nullability {kind}", column=name))
+        if old_col.enum or new_col.enum:
+            old_enum = set(old_col.enum or [])
+            new_enum = set(new_col.enum or [])
             removed = sorted(old_enum - new_enum)
             added = sorted(new_enum - old_enum)
-            if removed:
-                breaking.append(_describe(f"enum removed values {removed}", column=name))
-            if added:
-                non_breaking.append(_describe(f"enum added values {added}", column=name))
             if removed or added:
-                col_changes["enum"] = {"removed": removed, "added": added}
-        if col_changes:
-            changed_columns[name] = col_changes
-    for name in new_cols.keys() - old_cols.keys():
-        non_breaking.append(_describe("column added", column=name))
-    rule_changes: dict[str, Any] = {}
+                diff["enum_changes"].append({"column": name, "removed": removed, "added": added})
+            if removed:
+                diff["breaking"].append(_describe(f"enum removed {removed}", column=name))
+            if added:
+                diff["non_breaking"].append(_describe(f"enum added {added}", column=name))
     old_rules = {rule.id: rule for rule in old.rules}
     new_rules = {rule.id: rule for rule in new.rules}
-    for rule_id, old_rule in old_rules.items():
-        if rule_id not in new_rules:
-            breaking.append(f"rule {rule_id} removed")
-            continue
+    for rule_id in old_rules.keys() - new_rules.keys():
+        diff["rule_changes"].append({"id": rule_id, "change": "removed"})
+        diff["breaking"].append(f"rule {rule_id} removed")
+    for rule_id in new_rules.keys() - old_rules.keys():
+        diff["rule_changes"].append({"id": rule_id, "change": "added", "level": new_rules[rule_id].level})
+        bucket = diff["breaking"] if new_rules[rule_id].level == "ERROR" else diff["non_breaking"]
+        bucket.append(f"rule {rule_id} added")
+    for rule_id in sorted(set(old_rules) & set(new_rules)):
+        old_rule = old_rules[rule_id]
         new_rule = new_rules[rule_id]
         if old_rule.level != new_rule.level or old_rule.kind != new_rule.kind or old_rule.message != new_rule.message:
-            rule_changes[rule_id] = {
-                "from": old_rule.model_dump(),
-                "to": new_rule.model_dump(),
-            }
+            diff["rule_changes"].append({"id": rule_id, "change": "modified", "from": old_rule.model_dump(), "to": new_rule.model_dump()})
             if new_rule.level == "ERROR" and old_rule.level == "WARN":
-                breaking.append(f"rule {rule_id} escalated to ERROR")
-    for rule_id in new_rules.keys() - old_rules.keys():
-        new_rule = new_rules[rule_id]
-        impact = "breaking" if new_rule.level == "ERROR" else "non-breaking"
-        (breaking if impact == "breaking" else non_breaking).append(f"rule {rule_id} added")
-    return {
-        "breaking": breaking,
-        "non_breaking": non_breaking,
-        "changed_columns": changed_columns,
-        "changed_rules": rule_changes,
-    }
+                diff["breaking"].append(f"rule {rule_id} escalated to ERROR")
+            else:
+                diff["non_breaking"].append(f"rule {rule_id} changed")
+    return diff
 
 
 def _is_dtype_narrowing(old: str, new: str) -> bool:

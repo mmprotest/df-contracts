@@ -16,7 +16,7 @@ def _augment_contract(contract):
 
 
 def test_validate_pass(sample_df):
-    contract = infer_contract(sample_df, name="orders")
+    contract = infer_contract(sample_df, name="orders").contract
     contract = _augment_contract(contract)
     contract.rules.append(
         RuleSpec(
@@ -43,7 +43,7 @@ def test_validate_pass(sample_df):
 
 
 def test_validate_failures(sample_df):
-    contract = infer_contract(sample_df, name="orders")
+    contract = infer_contract(sample_df, name="orders").contract
     contract = _augment_contract(contract)
     contract.rules.append(
         RuleSpec(
@@ -78,3 +78,17 @@ def test_validate_failures(sample_df):
     assert "column.amount.min" in violation_ids
     assert "column.id.unique" in violation_ids
     assert "rule.start_before_end" in violation_ids
+
+
+def test_validate_sampling_and_profile(sample_df):
+    contract = infer_contract(sample_df, name="orders").contract
+    contract.profiles = {
+        "dev": {
+            "columns": {
+                "category": {"nullable": True},
+            },
+            "default_max_examples": 5,
+        }
+    }
+    report = validate(sample_df, contract, profile="dev", sample=0.5, by=["category"])
+    assert report.stats["rows"] <= len(sample_df)

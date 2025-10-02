@@ -1,0 +1,30 @@
+{
+  "created_at": "baseline",
+  "columns": {
+    "amount": {
+      "column": "amount",
+      "kind": "numeric",
+      "numeric": {
+        "count": 5,
+        "mean": 170.3,
+        "std": 39.1,
+        "min": 100.5,
+        "max": 220.7,
+        "quantiles": {
+          "0.5": 180.1
+        }
+      }
+    },
+    "category": {
+      "column": "category",
+      "kind": "categorical",
+      "categorical": {
+        "top_values": [["A", 0.6], ["B", 0.4]]
+      }
+    }
+  },
+  "null_ratios": {
+    "amount": 0.0,
+    "category": 0.0
+  }
+}

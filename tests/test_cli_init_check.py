@@ -16,7 +16,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_cli_init_and_check(tmp_path: Path, sample_path: Path, bad_sample_path: Path) -> None:
-    result = run_cli("init", str(sample_path))
+    result = run_cli("init", str(sample_path), "--no-show-suggestions")
     assert result.returncode == 0, result.stderr
     contract_file = tmp_path / "contract.json"
     contract_file.write_text(result.stdout)
@@ -30,6 +30,8 @@ def test_cli_init_and_check(tmp_path: Path, sample_path: Path, bad_sample_path: 
     assert check_ok.returncode == 0, check_ok.stderr
 
     report_file = tmp_path / "report.json"
+    html_file = tmp_path / "report.html"
+    junit_file = tmp_path / "report.xml"
     check_bad = run_cli(
         "check",
         str(bad_sample_path),
@@ -37,7 +39,13 @@ def test_cli_init_and_check(tmp_path: Path, sample_path: Path, bad_sample_path: 
         str(contract_file),
         "--report",
         str(report_file),
+        "--html",
+        str(html_file),
+        "--junit",
+        str(junit_file),
     )
     assert check_bad.returncode != 0
     payload = json.loads(report_file.read_text())
     assert payload["violations"]
+    assert html_file.read_text().startswith("<!DOCTYPE html>")
+    assert "testsuite" in junit_file.read_text()

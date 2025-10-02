@@ -21,6 +21,7 @@ dependencies = [
     "tomli",
     "python-dateutil",
     "regex",
+    "jinja2",
 ]
 optional-dependencies = { polars = ["polars"] }
 
