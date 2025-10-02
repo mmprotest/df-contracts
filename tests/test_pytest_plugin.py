@@ -10,7 +10,7 @@ from df_contracts import RuleSpec, infer_contract
 
 
 def build_contract(df: pd.DataFrame):
-    contract = infer_contract(df, name="orders")
+    contract = infer_contract(df, name="orders").contract
     columns = {col.name: col for col in contract.columns}
     columns["amount"].min = 0
     columns["id"].unique = True

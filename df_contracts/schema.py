@@ -28,6 +28,7 @@ class ColumnSpec(BaseModel):
     tz: Optional[str] = None
     description: Optional[str] = None
     unit: Optional[str] = None
+    profiles: Dict[str, "ColumnProfileOverride"] = Field(default_factory=dict)
 
 
 class RuleSpec(BaseModel):
@@ -42,11 +43,27 @@ class RuleSpec(BaseModel):
     message: str
 
 
+class ColumnProfileOverride(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    nullable: bool | float | None = None
+    allow_unknown: bool | None = None
+    enum: Optional[list[str]] = None
+    max_null_ratio: Optional[float] = None
+
+
 class ProfileConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     max_null_ratio_multiplier: Optional[float] = None
     max_examples: Optional[int] = None
+
+
+class ProfileOverrides(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    columns: Dict[str, ColumnProfileOverride] = Field(default_factory=dict)
+    default_max_examples: Optional[int] = None
 
 
 class Contract(BaseModel):
@@ -58,6 +75,7 @@ class Contract(BaseModel):
     columns: List[ColumnSpec]
     rules: List[RuleSpec] = Field(default_factory=list)
     profile_defaults: Optional[Dict[str, ProfileConfig]] = None
+    profiles: Dict[str, "ProfileOverrides"] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     unique_keys: List[List[str]] = Field(default_factory=list)
     allow_extra_columns: bool = True

@@ -3,12 +3,15 @@ repos:
     rev: 23.12.1
     hooks:
       - id: black
-  - repo: https://github.com/astral-sh/ruff-pre-commit
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.2.0
     hooks:
       - id: ruff
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+  - repo: local
     hooks:
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
+      - id: dfc-check
+        name: df-contracts check
+        entry: dfc check --contract contracts/orders.json --profile prod
+        language: system
+        files: "data/.*\\.(csv|parquet)$"
+        pass_filenames: false

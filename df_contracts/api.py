@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import time
-from typing import Any, List
+from typing import Any, List, Sequence
 
 import pandas as pd
 import regex
 from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
 from . import versioning
+from .drift import DriftSnapshot, snapshot as drift_snapshot
 from .checks import TABLE_CHECKS
 from .errors import RuleExecutionError
 from .report import ValidationReport
-from .schema import ColumnSpec, Contract, RuleSpec
+from .schema import ColumnProfileOverride, ColumnSpec, Contract, ProfileOverrides, RuleSpec
 from .types import ValidationStats, ViolationDict
 from .utils import ensure_pandas, head_records, is_dtype_compatible, normalize_dtype
 
@@ -22,13 +23,18 @@ def validate(
     *,
     profile: str = "prod",
     sample: float | None = None,
+    by: Sequence[str] | None = None,
     max_examples: int = 20,
+    with_snapshot: bool = False,
 ) -> ValidationReport:
     frame = ensure_pandas(df).copy()
     if sample:
         if not 0 < sample <= 1:
             raise ValueError("sample must be in (0, 1]")
-        frame = frame.sample(frac=sample, random_state=0)
+        frame = _sample(frame, sample, by)
+    profile_overrides = contract.profiles.get(profile) if contract.profiles else None
+    if profile_overrides and profile_overrides.default_max_examples:
+        max_examples = profile_overrides.default_max_examples
     start = time.perf_counter()
     stats: ValidationStats = {
         "rows": int(frame.shape[0]),
@@ -75,7 +81,12 @@ def validate(
             )
             ok = False
         null_ratio = float(series.isna().mean())
-        if column.nullable is False and null_ratio > 0:
+        overrides = _column_overrides(column, profile_overrides)
+        allowed_nullable = overrides.nullable if overrides and overrides.nullable is not None else column.nullable
+        allowed_max_null = overrides.max_null_ratio if overrides and overrides.max_null_ratio is not None else None
+        if allowed_max_null is not None:
+            allowed_nullable = allowed_max_null
+        if allowed_nullable is False and null_ratio > 0:
             violations.append(
                 _violation(
                     violation_id=f"column.{column.name}.nulls",
@@ -88,7 +99,7 @@ def validate(
                 )
             )
             ok = False
-        elif isinstance(column.nullable, float) and null_ratio > column.nullable:
+        elif isinstance(allowed_nullable, float) and null_ratio > allowed_nullable:
             violations.append(
                 _violation(
                     violation_id=f"column.{column.name}.nulls",
@@ -101,7 +112,10 @@ def validate(
                 )
             )
             ok = False
-        if column.enum and not column.allow_unknown:
+        allow_unknown = (
+            overrides.allow_unknown if overrides and overrides.allow_unknown is not None else column.allow_unknown
+        )
+        if column.enum and not allow_unknown:
             allowed = set(column.enum)
             bad_values = series.dropna().astype(str)
             mask = ~bad_values.isin(allowed)
@@ -280,7 +294,15 @@ def validate(
         elif rule.kind == "table" and rule.fn_name:
             ok = _apply_table_rule(rule, frame, violations, ok, max_examples)
     stats["duration_ms"] = int((time.perf_counter() - start) * 1000)
-    return ValidationReport(ok=ok, stats=stats, violations=violations, schema_diffs=schema_diffs)
+    embedded_snapshot: DriftSnapshot | None = drift_snapshot(frame) if with_snapshot else None
+    return ValidationReport(
+        ok=ok,
+        stats=stats,
+        violations=violations,
+        schema_diffs=schema_diffs,
+        profile=profile,
+        snapshot=embedded_snapshot,
+    )
 
 
 def _violation(
@@ -348,6 +370,32 @@ def _check_bounds(
         )
         return False
     return ok
+
+
+def _sample(frame: pd.DataFrame, frac: float, by: Sequence[str] | None) -> pd.DataFrame:
+    if not by:
+        return frame.sample(frac=frac, random_state=0)
+    missing = [col for col in by if col not in frame.columns]
+    if missing:
+        raise ValueError(f"Sampling columns missing from frame: {missing}")
+    parts = []
+    for _, group in frame.groupby(list(by)):
+        if group.empty:
+            continue
+        take = max(1, int(round(len(group) * frac)))
+        parts.append(group.sample(n=min(take, len(group)), random_state=0))
+    if not parts:
+        return frame.head(0)
+    return pd.concat(parts).sort_index()
+
+
+def _column_overrides(
+    column: ColumnSpec,
+    profile: ProfileOverrides | None,
+) -> ColumnProfileOverride | None:
+    if profile and column.name in profile.columns:
+        return profile.columns[column.name]
+    return None
 
 
 def _apply_row_rule(
